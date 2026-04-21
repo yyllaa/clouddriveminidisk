@@ -146,11 +146,11 @@ class CloudDriveMiniApi:
             value = data.get(key)
             if value not in {None, ""}:
                 summary[key] = value
-        for key in ("target_name", "target_path", "requires_upload", "requires_block_hashes", "md5_block_size"):
+        for key in ("target_name", "target_path", "requires_upload", "requires_block_hashes", "md5_block_size", "requires_sign_check", "sign_check", "sign_hash_algorithm"):
             value = detail.get(key)
             if value not in {None, ""}:
                 summary[f"detail.{key}"] = value
-        for key in ("path", "name", "requires_upload", "rapid_upload"):
+        for key in ("path", "name", "requires_upload", "rapid_upload", "reason", "sign_check"):
             value = result.get(key)
             if value not in {None, ""}:
                 summary[f"result.{key}"] = value
@@ -666,6 +666,8 @@ class CloudDriveMiniApi:
         md5: str = "",
         md5_block_size: int = 0,
         md5_block_hashes: Optional[List[str]] = None,
+        sign_check: str = "",
+        sign_val: str = "",
         probe_only: bool = False,
     ) -> dict[str, Any]:
         self._upload_log(
@@ -698,9 +700,34 @@ class CloudDriveMiniApi:
                 "md5": md5,
                 "md5_block_size": md5_block_size,
                 "md5_block_hashes": list(md5_block_hashes or []),
+                "sign_check": sign_check,
+                "sign_val": sign_val,
                 "probe_only": probe_only,
             },
         )
+
+    def _sha1_range(self, path: Path, range_text: str) -> str:
+        normalized_range = str(range_text or "").strip()
+        if normalized_range.lower().startswith("bytes="):
+            normalized_range = normalized_range[6:]
+        start_text, sep, end_text = normalized_range.partition("-")
+        if not sep or not start_text.strip() or not end_text.strip():
+            raise CloudDriveMiniError(f"invalid 115 sign_check range: {range_text}")
+        start = int(start_text)
+        end = int(end_text)
+        if start < 0 or end < start:
+            raise CloudDriveMiniError(f"invalid 115 sign_check range: {range_text}")
+        digest = hashlib.sha1()
+        remaining = end - start + 1
+        with path.open("rb") as handle:
+            handle.seek(start)
+            while remaining > 0:
+                chunk = handle.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    raise CloudDriveMiniError(f"115 sign_check range exceeds file size: {range_text}")
+                digest.update(chunk)
+                remaining -= len(chunk)
+        return digest.hexdigest().upper()
 
     def _upload_file_direct(
         self,
@@ -941,29 +968,53 @@ class CloudDriveMiniApi:
                         self._upload_log("info", "clouddrive2 block-hash probe completed without direct upload", target_name=target_name, actual_target_path=actual_target_path)
                         return self.get_item(Path(self._visible_path(actual_target_path)))
         elif self.mode == "personal" and provider == "115":
-            task = self._create_upload_task(
-                target_name,
-                file_size,
-                remote_dir_path,
-                content_hash=str(digests.get("sha256") or ""),
-                content_hash_algorithm="SHA256",
-                sha1=str(digests.get("sha1") or ""),
-                md5=str(digests.get("md5") or ""),
-                probe_only=True,
-            )
-            task_detail = task.get("detail", {}) if isinstance(task.get("detail"), dict) else {}
-            task_result = task.get("result", {}) if isinstance(task.get("result"), dict) else {}
-            status = str(task.get("status") or "").strip().lower()
-            self._upload_log("info", "115 probe result", target_name=target_name, status=status, task=self._summarize_upload_result(task))
-            if status == "success" or not bool(task_result.get("requires_upload", True)):
-                progress_callback(100)
-                actual_target_path = str(
-                    task_result.get("path")
-                    or task_detail.get("target_path")
-                    or f"{remote_dir_path.rstrip('/')}/{task_detail.get('target_name') or target_name}"
-                ).strip()
-                self._upload_log("info", "115 probe completed without direct upload", target_name=target_name, actual_target_path=actual_target_path)
-                return self.get_item(Path(self._visible_path(actual_target_path)))
+            probe_sign_check = ""
+            probe_sign_val = ""
+            for probe_attempt in range(3):
+                task = self._create_upload_task(
+                    target_name,
+                    file_size,
+                    remote_dir_path,
+                    content_hash=str(digests.get("sha256") or ""),
+                    content_hash_algorithm="SHA256",
+                    sha1=str(digests.get("sha1") or ""),
+                    md5=str(digests.get("md5") or ""),
+                    sign_check=probe_sign_check,
+                    sign_val=probe_sign_val,
+                    probe_only=True,
+                )
+                task_detail = task.get("detail", {}) if isinstance(task.get("detail"), dict) else {}
+                task_result = task.get("result", {}) if isinstance(task.get("result"), dict) else {}
+                status = str(task.get("status") or "").strip().lower()
+                self._upload_log(
+                    "info",
+                    "115 probe result",
+                    target_name=target_name,
+                    status=status,
+                    attempt=probe_attempt + 1,
+                    task=self._summarize_upload_result(task),
+                )
+                if status == "success" or not bool(task_result.get("requires_upload", True)):
+                    progress_callback(100)
+                    actual_target_path = str(
+                        task_result.get("path")
+                        or task_detail.get("target_path")
+                        or f"{remote_dir_path.rstrip('/')}/{task_detail.get('target_name') or target_name}"
+                    ).strip()
+                    self._upload_log("info", "115 probe completed without direct upload", target_name=target_name, actual_target_path=actual_target_path)
+                    return self.get_item(Path(self._visible_path(actual_target_path)))
+                requested_sign_check = str(task_detail.get("sign_check") or task_result.get("sign_check") or "").strip()
+                if not bool(task_detail.get("requires_sign_check")) or not requested_sign_check:
+                    break
+                probe_sign_check = requested_sign_check
+                probe_sign_val = self._sha1_range(local_path, requested_sign_check)
+                self._upload_log(
+                    "info",
+                    "115 probe requests sign check",
+                    target_name=target_name,
+                    attempt=probe_attempt + 1,
+                    sign_check=probe_sign_check,
+                )
         if global_vars.is_transfer_stopped(target_marker):
             self._upload_log("warning", "upload aborted before direct upload", target_name=target_name, target_marker=target_marker)
             return None
