@@ -168,13 +168,14 @@ class CloudDriveMiniApi:
         params: Optional[Dict[str, Any]] = None,
         payload: Optional[Dict[str, Any]] = None,
         retry_auth: bool = True,
+        attach_account_id: bool = True,
     ) -> dict[str, Any]:
         self._ensure_auth()
         request_params = {key: value for key, value in (params or {}).items() if value not in {None, ""}}
-        if self.account_id:
+        if attach_account_id and self.account_id:
             request_params.setdefault("account_id", self.account_id)
         request_payload = dict(payload or {})
-        if request_payload and self.account_id:
+        if request_payload and attach_account_id and self.account_id:
             request_payload.setdefault("account_id", self.account_id)
         response = self.session.request(
             method.upper(),
@@ -185,7 +186,14 @@ class CloudDriveMiniApi:
         )
         if response.status_code == 401 and retry_auth:
             self._ensure_auth(force=True)
-            return self._request_json(method, path, params=params, payload=payload, retry_auth=False)
+            return self._request_json(
+                method,
+                path,
+                params=params,
+                payload=payload,
+                retry_auth=False,
+                attach_account_id=attach_account_id,
+            )
         response.raise_for_status()
         data = response.json()
         if str(data.get("status", "") or "").strip().lower() == "error":
@@ -198,10 +206,11 @@ class CloudDriveMiniApi:
         *,
         params: Optional[Dict[str, Any]] = None,
         retry_auth: bool = True,
+        attach_account_id: bool = True,
     ) -> requests.Response:
         self._ensure_auth()
         request_params = {key: value for key, value in (params or {}).items() if value not in {None, ""}}
-        if self.account_id:
+        if attach_account_id and self.account_id:
             request_params.setdefault("account_id", self.account_id)
         response = self.session.get(
             f"{self.base_url}{path}",
@@ -212,7 +221,7 @@ class CloudDriveMiniApi:
         if response.status_code == 401 and retry_auth:
             response.close()
             self._ensure_auth(force=True)
-            return self._request_stream(path, params=params, retry_auth=False)
+            return self._request_stream(path, params=params, retry_auth=False, attach_account_id=attach_account_id)
         response.raise_for_status()
         content_type = str(response.headers.get("content-type") or "").lower()
         if "application/json" in content_type:
@@ -234,10 +243,11 @@ class CloudDriveMiniApi:
         data: bytes,
         headers: Optional[Dict[str, str]] = None,
         retry_auth: bool = True,
+        attach_account_id: bool = True,
     ) -> dict[str, Any]:
         self._ensure_auth()
         request_params = {key: value for key, value in (params or {}).items() if value not in {None, ""}}
-        if self.account_id:
+        if attach_account_id and self.account_id:
             request_params.setdefault("account_id", self.account_id)
         response = self.session.request(
             method.upper(),
@@ -249,12 +259,42 @@ class CloudDriveMiniApi:
         )
         if response.status_code == 401 and retry_auth:
             self._ensure_auth(force=True)
-            return self._request_binary(method, path, params=params, data=data, headers=headers, retry_auth=False)
+            return self._request_binary(
+                method,
+                path,
+                params=params,
+                data=data,
+                headers=headers,
+                retry_auth=False,
+                attach_account_id=attach_account_id,
+            )
         response.raise_for_status()
         result = response.json()
         if str(result.get("status", "") or "").strip().lower() == "error":
             raise CloudDriveMiniError(str(result.get("message") or f"{path} failed"))
         return result
+
+    def list_accounts(self) -> dict[str, Any]:
+        data = self._request_json("GET", "/api/accounts", attach_account_id=False)
+        active_account_id = str(data.get("active_account_id") or "").strip()
+        accounts: List[dict[str, Any]] = []
+        seen: set[str] = set()
+        for raw in data.get("accounts", []):
+            if not isinstance(raw, dict):
+                continue
+            account_id = str(raw.get("account_id") or "").strip()
+            if not account_id or account_id in seen:
+                continue
+            seen.add(account_id)
+            item = dict(raw)
+            item["account_id"] = account_id
+            item["display_name"] = str(raw.get("display_name") or account_id).strip() or account_id
+            item["provider"] = str(raw.get("provider") or "").strip()
+            accounts.append(item)
+        return {
+            "active_account_id": active_account_id,
+            "accounts": accounts,
+        }
 
     def _detail(self, remote_path: str) -> Optional[dict[str, Any]]:
         endpoint = self._endpoint("detail")

@@ -28,7 +28,12 @@ class CloudDriveMiniDisk(_PluginBase):
     _enabled = False
     _disk_name = "CloudDriveMini存储"
     _api: Optional[CloudDriveMiniApi] = None
+    _https = False
+    _host = "127.0.0.1"
+    _port = "8765"
     _base_url = "http://127.0.0.1:8765"
+    _username = ""
+    _password = ""
     _account_id = ""
     _mode = "personal"
     _root_path = "/"
@@ -53,11 +58,16 @@ class CloudDriveMiniDisk(_PluginBase):
             self._api.close()
             self._api = None
 
-        scheme = "https" if bool(config.get("https", False)) else "http"
+        self._https = bool(config.get("https", False))
+        scheme = "https" if self._https else "http"
         host = str(config.get("host") or "127.0.0.1").strip() or "127.0.0.1"
         port = str(config.get("port") or "8765").strip() or "8765"
+        self._host = host
+        self._port = port
         base_url = f"{scheme}://{host}:{port}"
         self._base_url = base_url
+        self._username = str(config.get("username") or "").strip()
+        self._password = str(config.get("password") or "")
         self._account_id = str(config.get("account_id") or "").strip()
         self._mode = str(config.get("mode") or "personal").strip() or "personal"
         self._root_path = str(config.get("root_path") or "/").strip() or "/"
@@ -73,8 +83,8 @@ class CloudDriveMiniDisk(_PluginBase):
                 account_id=self._account_id,
                 mode=self._mode,
                 root_path=self._root_path,
-                username=str(config.get("username") or "").strip(),
-                password=str(config.get("password") or ""),
+                username=self._username,
+                password=self._password,
                 timeout=self._timeout,
                 upload_chunk_size_mb=self._upload_chunk_size_mb,
             )
@@ -97,7 +107,69 @@ class CloudDriveMiniDisk(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         return []
 
+    def _detect_account_items(self) -> Tuple[List[Dict[str, str]], str]:
+        detector: Optional[CloudDriveMiniApi] = None
+        try:
+            detector = CloudDriveMiniApi(
+                base_url=self._base_url,
+                disk_name=self._disk_name,
+                username=self._username,
+                password=self._password,
+                timeout=self._timeout,
+                upload_chunk_size_mb=self._upload_chunk_size_mb,
+            )
+            snapshot = detector.list_accounts()
+        except Exception as error:
+            logger.warning("【CloudDriveMiniDisk】自动侦测账号失败: %s", error)
+            return [], str(error)
+        finally:
+            if detector:
+                detector.close()
+
+        active_account_id = str(snapshot.get("active_account_id") or "").strip()
+        items: List[Dict[str, str]] = []
+        seen: set[str] = set()
+        for account in snapshot.get("accounts", []):
+            if not isinstance(account, dict):
+                continue
+            account_id = str(account.get("account_id") or "").strip()
+            if not account_id or account_id in seen:
+                continue
+            seen.add(account_id)
+            display_name = str(account.get("display_name") or account_id).strip() or account_id
+            provider = str(account.get("provider") or "").strip()
+            title = f"{display_name}（{account_id}）" if display_name != account_id else account_id
+            if provider:
+                title = f"{title} - {provider}"
+            if account_id == active_account_id:
+                title = f"{title} - 当前活动账号"
+            items.append({"title": title, "value": account_id})
+
+        if self._account_id and self._account_id not in seen:
+            items.insert(0, {"title": f"{self._account_id}（当前配置）", "value": self._account_id})
+
+        return items, ""
+
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        account_items, account_detect_error = self._detect_account_items()
+        account_select_hint = (
+            f"自动侦测失败：{account_detect_error}"
+            if account_detect_error
+            else (
+                "已从 clouddrive-mini 自动读取账号列表"
+                if account_items
+                else "未检测到账号；请确认服务地址和登录信息，保存后重新打开配置页"
+            )
+        )
+        alert_content = [
+            {"component": "div", "text": "说明：这是基于 clouddrive-mini HTTP API 的存储插件。"},
+            {"component": "div", "text": "已支持：浏览、详情、建目录、删除、重命名、下载、分片上传、复制、移动。"},
+            {"component": "div", "text": "可以先手填 account_id，也可以直接从“自动侦测账号”里选择。"},
+            {"component": "div", "text": "如果项目启用了登录认证，请先填写用户名和密码并保存后再重新打开配置页。"},
+        ]
+        if account_detect_error:
+            alert_content.append({"component": "div", "text": f"自动侦测失败：{account_detect_error}"})
+
         return [
             {
                 "component": "VForm",
@@ -182,6 +254,23 @@ class CloudDriveMiniDisk(_PluginBase):
                                     {
                                         "component": "VSelect",
                                         "props": {
+                                            "model": "account_id",
+                                            "label": "自动侦测账号",
+                                            "items": account_items,
+                                            "clearable": True,
+                                            "hint": account_select_hint,
+                                            "persistent-hint": True,
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSelect",
+                                        "props": {
                                             "model": "mode",
                                             "label": "存储模式",
                                             "items": [
@@ -192,6 +281,11 @@ class CloudDriveMiniDisk(_PluginBase):
                                     }
                                 ],
                             },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
                             {
                                 "component": "VCol",
                                 "props": {"cols": 12, "md": 4},
@@ -207,14 +301,9 @@ class CloudDriveMiniDisk(_PluginBase):
                                     }
                                 ],
                             },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
+                                "props": {"cols": 12, "md": 4},
                                 "content": [
                                     {
                                         "component": "VTextField",
@@ -229,7 +318,7 @@ class CloudDriveMiniDisk(_PluginBase):
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
+                                "props": {"cols": 12, "md": 4},
                                 "content": [
                                     {
                                         "component": "VTextField",
@@ -295,11 +384,7 @@ class CloudDriveMiniDisk(_PluginBase):
                                             "density": "compact",
                                             "class": "mt-2",
                                         },
-                                        "content": [
-                                            {"component": "div", "text": "说明：这是基于 clouddrive-mini HTTP API 的存储插件。"},
-                                            {"component": "div", "text": "已支持：浏览、详情、建目录、删除、重命名、下载、分片上传、复制、移动。"},
-                                            {"component": "div", "text": "建议先配置 account_id；如果项目启用了登录认证，再填写用户名和密码。"},
-                                        ],
+                                        "content": alert_content,
                                     }
                                 ],
                             }
