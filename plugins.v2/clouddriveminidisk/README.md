@@ -91,7 +91,7 @@
 
 ## 版本信息
 
-当前仓库元数据版本为 `v0.1.3`：
+当前仓库元数据版本为 `v0.1.4`：
 
 ```json
 {
@@ -99,11 +99,12 @@
     "name": "CloudDrive Mini存储",
     "description": "使用 clouddrive-mini 项目 HTTP API 作为 MoviePilot 自定义存储。",
     "labels": "存储",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "icon": "Cloudrive_A.png",
     "author": "yyllaa",
     "level": 1,
     "history": {
+      "v0.1.4": "补充 115 秒传 sign_check 二次校验探测，避免误判为必须直传。",
       "v0.1.3": "更新插件版本号，保持仓库元数据与插件代码版本一致。",
       "v0.1.2": "插件上传优先走项目直传接口并附带摘要头，减少中转缓存依赖；同步中文文档和作者主页。",
       "v0.1.1": "支持在插件配置页自动侦测并选择 account_id，保留原有配置可直接升级。",
