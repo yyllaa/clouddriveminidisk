@@ -11,14 +11,6 @@ from typing import Any
 INVALID_PATH_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 SPACE_RE = re.compile(r"\s+")
 SUPPORTED_MEDIA_TYPES = {"movie", "tv", "series", "anime", "generic", "download"}
-DEFAULT_MEDIA_DIRS = {
-    "movie": "Movies",
-    "tv": "TV Shows",
-    "series": "TV Shows",
-    "anime": "Anime",
-    "generic": "Library",
-    "download": "Downloads",
-}
 DEFAULT_UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 STREAM_REQUEST_HEADER_MAP = {
     "filename": ("x-mp-filename", "x-filename"),
@@ -52,17 +44,6 @@ def _plugin_config(context: Any) -> dict[str, Any]:
 
 def _env_text(name: str) -> str:
     return str(os.environ.get(name, "") or "").strip()
-
-
-def _normalize_media_dirs(raw: Any) -> dict[str, str]:
-    media_dirs = dict(DEFAULT_MEDIA_DIRS)
-    if isinstance(raw, dict):
-        for key, value in raw.items():
-            normalized_key = str(key or "").strip().lower()
-            text = _sanitize_path_component(value)
-            if normalized_key in media_dirs and text:
-                media_dirs[normalized_key] = text
-    return media_dirs
 
 
 def _normalize_path_aliases(raw: Any) -> list[dict[str, str]]:
@@ -118,7 +99,6 @@ def _normalized_config(context: Any) -> dict[str, Any]:
         "preferred_root_keys": preferred_root_keys,
         "include_account_ids": include_account_ids,
         "include_modes": include_modes,
-        "media_dirs": _normalize_media_dirs(config.get("media_dirs", {})),
         "create_dirs_on_resolve": bool(config.get("create_dirs_on_resolve", True)),
         "allow_probe_write": bool(config.get("allow_probe_write", True)),
     }
@@ -356,7 +336,7 @@ def _apply_path_alias(path: Path, aliases: list[dict[str, str]]) -> str:
         if original_lower == source:
             return alias["to"]
         if original_lower.startswith(source.rstrip("/") + "/"):
-            suffix = original.replace("\\", "/")[len(alias["from"].replace("\\", "/")):].lstrip("/")
+            suffix = original.replace("\\", "/")[len(alias["from"].replace("\\", "/")) :].lstrip("/")
             return alias["to"].rstrip("/\\") + ("/" + suffix if suffix else "")
     return original
 
@@ -423,22 +403,19 @@ def _season_dir(value: Any) -> str:
     return f"Season {number}"
 
 
-def _build_relative_subpath(payload: dict[str, Any], media_dirs: dict[str, str]) -> str:
+def _build_relative_subpath(payload: dict[str, Any]) -> str:
     provided_sub_path = str(payload.get("sub_path", "") or "").strip().replace("\\", "/").strip("/")
     if provided_sub_path:
         parts = [_sanitize_path_component(part) for part in provided_sub_path.split("/") if _sanitize_path_component(part)]
         return "/".join(parts)
 
     media_type = _normalized_media_type(payload.get("media_type", "generic"))
-    base_dir = media_dirs.get(media_type, media_dirs["generic"])
     title_dir = _title_with_year(str(payload.get("title", "") or ""), payload.get("year"))
     category = _sanitize_path_component(payload.get("category", ""))
     season_dir = _season_dir(payload.get("season"))
 
     parts: list[str] = []
-    if base_dir:
-        parts.append(base_dir)
-    if media_type == "generic" and category:
+    if category:
         parts.append(category)
     if title_dir:
         parts.append(title_dir)
@@ -477,7 +454,7 @@ def resolve_storage_payload(context: Any, payload: dict[str, Any]) -> dict[str, 
     roots = _mounted_roots(context)
     config = _normalized_config(context)
     selected_root = _select_root(context, payload, roots)
-    relative_subpath = _build_relative_subpath(payload, config["media_dirs"])
+    relative_subpath = _build_relative_subpath(payload)
     local_dir = Path(selected_root["mapping_dir"])
     if relative_subpath:
         local_dir = local_dir / Path(relative_subpath.replace("/", os.sep))

@@ -1,33 +1,787 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MoviePilot Storage Bridge</title>
+  <title>MoviePilot 存储桥接</title>
   <style>
     :root {
-      color-scheme: light dark;
-      font-family: "Segoe UI", sans-serif;
+      color-scheme: light;
+      font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --bg-top: #f5f8fb;
+      --bg-bottom: #e8eef3;
+      --panel: rgba(255, 255, 255, 0.92);
+      --surface: rgba(245, 248, 251, 0.9);
+      --border: rgba(22, 42, 58, 0.11);
+      --text: #172838;
+      --muted: #617383;
+      --primary: #176b69;
+      --primary-strong: #104c4b;
+      --accent: #d18c32;
+      --danger: #b84949;
+      --shadow: 0 18px 44px rgba(18, 34, 48, 0.08);
+      --code-bg: #111d29;
+      --code-text: #dce9f4;
     }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
     body {
       margin: 0;
-      padding: 24px;
+      min-height: 100vh;
+      padding: 14px;
+      color: var(--text);
+      background:
+        linear-gradient(135deg, rgba(23, 107, 105, 0.14) 0, rgba(23, 107, 105, 0.04) 28%, transparent 28%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+    }
+
+    .shell {
+      width: min(1280px, 100%);
+      min-height: calc(100vh - 28px);
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .hero {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+    }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--primary);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.12;
+    }
+
+    .subtitle {
+      max-width: 76ch;
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .status-chip {
+      min-width: min(320px, 100%);
+      padding: 12px 14px;
+      border: 1px solid rgba(23, 107, 105, 0.15);
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(23, 107, 105, 0.13), rgba(209, 140, 50, 0.09));
+    }
+
+    .status-chip span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-chip strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 15px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .layout {
+      min-height: 0;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
+      align-items: start;
+    }
+
+    .panel {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel-head {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+
+    .panel-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .field-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .field,
+    .toggle {
+      display: grid;
+      gap: 7px;
+    }
+
+    .toggle {
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
+      padding: 12px;
+      border: 1px solid rgba(22, 42, 58, 0.08);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .toggle input {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+    }
+
+    label span,
+    .label {
+      color: var(--muted);
+      font-size: 13px;
       line-height: 1.5;
     }
-    main {
-      max-width: 720px;
+
+    .toggle strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
     }
-    code {
-      font-family: Consolas, monospace;
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    textarea {
+      width: 100%;
+      border: 1px solid rgba(22, 42, 58, 0.13);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: inherit;
+      background: rgba(255, 255, 255, 0.96);
+      font: inherit;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: rgba(23, 107, 105, 0.45);
+      box-shadow: 0 0 0 3px rgba(23, 107, 105, 0.12);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+      box-shadow: 0 12px 22px rgba(23, 107, 105, 0.18);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    button.secondary {
+      color: var(--primary);
+      border: 1px solid rgba(23, 107, 105, 0.16);
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: none;
+    }
+
+    button.warning {
+      background: linear-gradient(135deg, var(--accent), #a7661d);
+      box-shadow: 0 12px 22px rgba(167, 102, 29, 0.16);
+    }
+
+    button:disabled {
+      opacity: 0.62;
+      cursor: not-allowed;
+    }
+
+    .endpoint-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .endpoint {
+      display: grid;
+      gap: 5px;
+      padding: 11px 12px;
+      border: 1px solid rgba(22, 42, 58, 0.08);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .endpoint strong {
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .mono {
+      overflow-wrap: anywhere;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .root-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .root-card {
+      padding: 12px;
+      border: 1px solid rgba(22, 42, 58, 0.08);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.68);
+      display: grid;
+      gap: 8px;
+    }
+
+    .root-head {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .root-title {
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .badge {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0 9px;
+      color: var(--primary);
+      background: rgba(23, 107, 105, 0.09);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .badge.warn {
+      color: var(--danger);
+      background: rgba(184, 73, 73, 0.1);
+    }
+
+    .code-box {
+      min-height: 210px;
+      max-height: 430px;
+      margin: 0;
+      padding: 13px 14px;
+      overflow: auto;
+      border: 1px solid rgba(22, 42, 58, 0.08);
+      border-radius: 8px;
+      color: var(--code-text);
+      background: var(--code-bg);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .empty {
+      padding: 16px;
+      border: 1px dashed rgba(22, 42, 58, 0.16);
+      border-radius: 8px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.52);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    body.host-shell-active {
+      min-height: auto;
+      padding: 0;
+      background: transparent;
+    }
+
+    body.host-shell-active .shell {
+      width: 100%;
+      min-height: auto;
+    }
+
+    body.host-shell-active .hero .eyebrow,
+    body.host-shell-active .hero h1,
+    body.host-shell-active .hero .subtitle {
+      display: none !important;
+    }
+
+    @media (max-width: 1040px) {
+      .hero,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      body { padding: 12px; }
+      .shell { min-height: calc(100vh - 24px); }
+      .hero,
+      .panel { padding: 14px; }
+      .field-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 23px; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <h1>MoviePilot Storage Bridge</h1>
-    <p>This plugin is API-first.</p>
-    <p>Use <code>/api/plugins/moviepilot-storage/api/ping</code> for private access.</p>
-    <p>Use <code>/api/public/plugins/moviepilot-storage/api/ping</code> for public access discovery.</p>
-  </main>
+  <div class="shell">
+    <section class="card hero">
+      <div>
+        <p class="eyebrow">Plugin Workspace</p>
+        <h1>MoviePilot 存储桥接</h1>
+        <p class="subtitle">把 clouddrive-mini 已挂载的云盘目录暴露给 MoviePilot，MoviePilot 侧插件填同一个桥接 Token 后即可读取根目录、解析保存路径并走直传预检查。</p>
+      </div>
+      <div class="status-chip">
+        <span>桥接状态</span>
+        <strong id="statusChip">正在读取配置</strong>
+      </div>
+    </section>
+
+    <div class="layout">
+      <section class="card panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">桥接配置</h2>
+            <p class="panel-subtitle">这里保存的是 clouddrive-mini 侧的 token，MoviePilot 侧 `CloudDriveStorageBridge` 填同一个值。</p>
+          </div>
+        </div>
+
+        <label class="toggle">
+          <input id="enabledInput" type="checkbox">
+          <span>
+            <strong>启用 moviepilot-storage</strong>
+            <span class="hint">未启用时插件 API 和页面会被宿主拒绝访问。</span>
+          </span>
+        </label>
+
+        <label class="field">
+          <span class="label">桥接 Token</span>
+          <input id="tokenInput" type="password" autocomplete="off" placeholder="建议使用随机长字符串">
+          <span class="hint">会通过 `X-MP-Storage-Token` 或 `Authorization: Bearer` 校验 MoviePilot 请求。</span>
+        </label>
+
+        <div class="actions">
+          <button class="secondary" id="refreshBtn" type="button">刷新</button>
+          <button class="warning" id="generateTokenBtn" type="button">生成 Token</button>
+          <button id="saveBtn" type="button">保存配置</button>
+          <button class="secondary" id="testBtn" type="button">测试读取根目录</button>
+        </div>
+
+        <label class="field">
+          <span class="label">路径别名</span>
+          <textarea id="pathAliasesInput" spellcheck="false" placeholder="D:\cloud-data=/mnt/cloud-data"></textarea>
+          <span class="hint">每行一个 `本机路径=MoviePilot 容器路径`，用于把 Windows 挂载路径映射成 MoviePilot 可见路径。</span>
+        </label>
+
+        <label class="field">
+          <span class="label">优先根目录 Root Key</span>
+          <textarea id="preferredRootKeysInput" spellcheck="false" placeholder="每行一个 root_key，可留空"></textarea>
+        </label>
+
+        <div class="field-grid">
+          <label class="field">
+            <span class="label">限定账号 ID</span>
+            <textarea id="includeAccountIdsInput" spellcheck="false" placeholder="每行一个 account_id，可留空"></textarea>
+          </label>
+          <label class="field">
+            <span class="label">限定挂载模式</span>
+            <textarea id="includeModesInput" spellcheck="false" placeholder="personal&#10;family"></textarea>
+          </label>
+        </div>
+
+        <div class="field-grid">
+          <label class="toggle">
+            <input id="createDirsInput" type="checkbox">
+            <span>
+              <strong>解析路径时自动建目录</strong>
+              <span class="hint">MoviePilot 解析目标目录时自动创建缺失目录。</span>
+            </span>
+          </label>
+          <label class="toggle">
+            <input id="allowProbeInput" type="checkbox">
+            <span>
+              <strong>允许写入探测</strong>
+              <span class="hint">测试可写性时会临时写入 `.moviepilot-storage-probe.tmp`。</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <div class="panel card">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">对接信息</h2>
+            <p class="panel-subtitle">MoviePilot 侧 `server_url` 填 clouddrive-mini 地址，`token` 填左侧保存的桥接 Token。</p>
+          </div>
+        </div>
+
+        <div class="endpoint-list">
+          <div class="endpoint">
+            <strong>MoviePilot server_url</strong>
+            <div class="mono" id="serverUrlValue">-</div>
+          </div>
+          <div class="endpoint">
+            <strong>根目录 API</strong>
+            <div class="mono" id="rootsApiValue">-</div>
+          </div>
+          <div class="endpoint">
+            <strong>直传入口</strong>
+            <div class="mono" id="uploadApiValue">-</div>
+          </div>
+        </div>
+
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">挂载根目录</h2>
+            <p class="panel-subtitle">保存 token 后可以在这里直接验证 MoviePilot 能读取到哪些存储根。</p>
+          </div>
+        </div>
+
+        <div class="root-list" id="rootList">
+          <div class="empty">等待读取根目录。</div>
+        </div>
+
+        <pre class="code-box" id="resultBox">正在读取配置...</pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const pluginId = (() => {
+      const parts = String(window.location.pathname || "").split("/").filter(Boolean);
+      return parts.length >= 2 && parts[0] === "plugins" ? parts[1] : "moviepilot-storage";
+    })();
+
+    const pluginEndpoint = `/api/plugins/${encodeURIComponent(pluginId)}`;
+    const apiBase = `${pluginEndpoint}/api`;
+    const hostShellActive = new URLSearchParams(window.location.search).get("_host_shell") === "1";
+
+    const enabledInput = document.getElementById("enabledInput");
+    const tokenInput = document.getElementById("tokenInput");
+    const pathAliasesInput = document.getElementById("pathAliasesInput");
+    const preferredRootKeysInput = document.getElementById("preferredRootKeysInput");
+    const includeAccountIdsInput = document.getElementById("includeAccountIdsInput");
+    const includeModesInput = document.getElementById("includeModesInput");
+    const createDirsInput = document.getElementById("createDirsInput");
+    const allowProbeInput = document.getElementById("allowProbeInput");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const generateTokenBtn = document.getElementById("generateTokenBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const testBtn = document.getElementById("testBtn");
+    const statusChip = document.getElementById("statusChip");
+    const serverUrlValue = document.getElementById("serverUrlValue");
+    const rootsApiValue = document.getElementById("rootsApiValue");
+    const uploadApiValue = document.getElementById("uploadApiValue");
+    const rootList = document.getElementById("rootList");
+    const resultBox = document.getElementById("resultBox");
+
+    if (hostShellActive) {
+      document.body.classList.add("host-shell-active");
+    }
+
+    function notifyHostShellState(type = "host-shell-state") {
+      if (!hostShellActive || !window.parent || window.parent === window) return;
+      try {
+        window.parent.postMessage({ source: "clouddrive-plugin-frame", type }, window.location.origin);
+      } catch {}
+    }
+
+    function setBusy(busy) {
+      refreshBtn.disabled = busy;
+      generateTokenBtn.disabled = busy;
+      saveBtn.disabled = busy;
+      testBtn.disabled = busy;
+      notifyHostShellState();
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function splitLines(value) {
+      return String(value || "")
+        .split(/[\n,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function listToText(value) {
+      return Array.isArray(value) ? value.map((item) => String(item || "").trim()).filter(Boolean).join("\n") : "";
+    }
+
+    function aliasesToText(value) {
+      if (!Array.isArray(value)) return "";
+      return value
+        .filter((item) => item && typeof item === "object")
+        .map((item) => `${String(item.from || "").trim()}=${String(item.to || "").trim()}`)
+        .filter((line) => line !== "=")
+        .join("\n");
+    }
+
+    function parseAliases(value) {
+      return String(value || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const separator = line.includes("=>") ? "=>" : "=";
+          const index = line.indexOf(separator);
+          if (index < 0) return null;
+          const from = line.slice(0, index).trim();
+          const to = line.slice(index + separator.length).trim();
+          return from && to ? { from, to } : null;
+        })
+        .filter(Boolean);
+    }
+
+    function renderEndpoints() {
+      const origin = window.location.origin;
+      serverUrlValue.textContent = origin;
+      rootsApiValue.textContent = `${origin}/api/public/plugins/${pluginId}/api/roots`;
+      uploadApiValue.textContent = `${origin}/api/public/moviepilot-storage/upload-stream`;
+    }
+
+    async function requestJson(url, options = {}) {
+      const response = await fetch(url, {
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        ...options,
+      });
+      const text = await response.text();
+      const payload = text ? JSON.parse(text) : {};
+      if (!response.ok || String(payload.status || "").toLowerCase() === "error") {
+        throw new Error(String(payload.message || `request failed: ${response.status}`));
+      }
+      return payload;
+    }
+
+    function renderPlugin(plugin) {
+      const config = plugin && typeof plugin.config === "object" ? plugin.config : {};
+      enabledInput.checked = Boolean(plugin?.enabled);
+      tokenInput.value = String(config.token || "");
+      pathAliasesInput.value = aliasesToText(config.path_aliases);
+      preferredRootKeysInput.value = listToText(config.preferred_root_keys);
+      includeAccountIdsInput.value = listToText(config.include_account_ids);
+      includeModesInput.value = listToText(config.include_modes);
+      createDirsInput.checked = config.create_dirs_on_resolve !== false;
+      allowProbeInput.checked = config.allow_probe_write !== false;
+      renderEndpoints();
+      statusChip.textContent = enabledInput.checked
+        ? (tokenInput.value ? "已启用，Token 已配置" : "已启用，等待配置 Token")
+        : "插件未启用";
+      resultBox.textContent = JSON.stringify({
+        status: "ok",
+        plugin_id: plugin?.id || pluginId,
+        enabled: Boolean(plugin?.enabled),
+        token_configured: Boolean(tokenInput.value),
+      }, null, 2);
+    }
+
+    function collectConfig() {
+      return {
+        token: String(tokenInput.value || "").trim(),
+        path_aliases: parseAliases(pathAliasesInput.value),
+        preferred_root_keys: splitLines(preferredRootKeysInput.value),
+        include_account_ids: splitLines(includeAccountIdsInput.value),
+        include_modes: splitLines(includeModesInput.value).map((item) => item.toLowerCase()),
+        create_dirs_on_resolve: Boolean(createDirsInput.checked),
+        allow_probe_write: Boolean(allowProbeInput.checked),
+      };
+    }
+
+    function renderRoots(payload) {
+      const roots = Array.isArray(payload?.roots) ? payload.roots : [];
+      if (!roots.length) {
+        rootList.innerHTML = '<div class="empty">没有读取到挂载根目录，请先在 clouddrive-mini 里完成媒体挂载。</div>';
+        return;
+      }
+      rootList.innerHTML = roots.map((root) => {
+        const exists = Boolean(root.exists && root.is_dir);
+        return `
+          <article class="root-card">
+            <div class="root-head">
+              <div>
+                <div class="root-title">${escapeHtml(root.account_label || root.account_id || "未命名账号")}</div>
+                <div class="mono">${escapeHtml(root.root_key || "-")}</div>
+              </div>
+              <span class="badge${exists ? "" : " warn"}">${exists ? "可用" : "路径不可用"}</span>
+            </div>
+            <div class="mono">provider=${escapeHtml(root.provider || "-")} mode=${escapeHtml(root.mode || "-")}</div>
+            <div class="mono">${escapeHtml(root.exported_dir || root.mapping_dir || "-")}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function loadConfig() {
+      setBusy(true);
+      try {
+        const plugin = await requestJson(pluginEndpoint);
+        renderPlugin(plugin);
+      } catch (error) {
+        statusChip.textContent = "读取失败";
+        resultBox.textContent = String(error?.message || error || "读取失败");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function saveConfig() {
+      setBusy(true);
+      try {
+        const payload = await requestJson(pluginEndpoint, {
+          method: "POST",
+          body: JSON.stringify({
+            enabled: Boolean(enabledInput.checked),
+            config: collectConfig(),
+            replace_config: true,
+          }),
+        });
+        renderPlugin(payload);
+        await testRoots();
+      } catch (error) {
+        resultBox.textContent = String(error?.message || error || "保存失败");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function testRoots() {
+      const token = String(tokenInput.value || "").trim();
+      if (!token) {
+        rootList.innerHTML = '<div class="empty">请先填写并保存桥接 Token。</div>';
+        resultBox.textContent = "bridge token is empty";
+        return;
+      }
+      setBusy(true);
+      try {
+        const payload = await requestJson(`${apiBase}/roots`, {
+          headers: { "X-MP-Storage-Token": token },
+        });
+        renderRoots(payload);
+        resultBox.textContent = JSON.stringify(payload, null, 2);
+        statusChip.textContent = `已读取 ${Array.isArray(payload.roots) ? payload.roots.length : 0} 个根目录`;
+      } catch (error) {
+        rootList.innerHTML = '<div class="empty">根目录读取失败，请检查 Token 和插件启用状态。</div>';
+        resultBox.textContent = String(error?.message || error || "测试失败");
+        statusChip.textContent = "根目录读取失败";
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function generateToken() {
+      const bytes = new Uint8Array(24);
+      crypto.getRandomValues(bytes);
+      tokenInput.value = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      statusChip.textContent = "已生成新 Token，等待保存";
+    }
+
+    refreshBtn.addEventListener("click", () => void loadConfig());
+    generateTokenBtn.addEventListener("click", generateToken);
+    saveBtn.addEventListener("click", () => void saveConfig());
+    testBtn.addEventListener("click", () => void testRoots());
+
+    window.CloudDrivePluginHostApi = {
+      getHostShellConfig() {
+        return {
+          actions: [
+            { id: "refresh", label: "刷新", hidden: false, disabled: Boolean(refreshBtn.disabled) },
+            { id: "save", label: "保存配置", hidden: false, disabled: Boolean(saveBtn.disabled) },
+            { id: "test", label: "测试根目录", hidden: false, disabled: Boolean(testBtn.disabled) },
+            { id: "stop", label: "停止", hidden: true, disabled: true },
+          ],
+        };
+      },
+      async runAction(actionId) {
+        const normalized = String(actionId || "").trim().toLowerCase();
+        if (normalized === "refresh") {
+          await loadConfig();
+          return true;
+        }
+        if (normalized === "save") {
+          await saveConfig();
+          return true;
+        }
+        if (normalized === "test") {
+          await testRoots();
+          return true;
+        }
+        throw new Error(`unsupported host action: ${actionId}`);
+      },
+      async refresh() {
+        await loadConfig();
+        return true;
+      },
+      async save() {
+        await saveConfig();
+        return true;
+      },
+    };
+
+    notifyHostShellState("host-shell-ready");
+    void loadConfig();
+  </script>
 </body>
 </html>
